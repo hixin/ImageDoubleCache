@@ -8,47 +8,38 @@ import android.os.Message;
 import android.util.Log;
 import android.widget.ImageView;
 
-import java.io.IOException;
+import com.example.paul.cache.util.libcore.ImageCache;
+
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Created by paul on 15/12/28.
- */
 public class ImageLoader {
-    private static final String TAG = ImageLoader.class.getSimpleName();
-    private static ImageLoader sInstance;
-    private DoubleCache mDoubleCache = null;
+    private static final String TAG = "ImageLoader";
+    
+    public ImageCache mCache ;
+    public int mLoadingImageId ;
+    public int mErrorImageId;
 
     private ExecutorService mExecutorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
     private ImageLoader(Context context) {
-        mDoubleCache = new DoubleCache(context);
+        mCache = new DoubleCache(context);
     }
-
-    public static ImageLoader getInstance(Context context) {
-        if (sInstance == null) {
-            synchronized (ImageLoader.class) {
-                sInstance = new ImageLoader(context);
-            }
-        }
-        return sInstance;
-    }
-
+    
     public void displayImage(String url, ImageView imageView) {
-        Bitmap bitmap = mDoubleCache.get(url);
+        Bitmap bitmap = mCache.get(url);
         if (bitmap != null) {
             imageView.setImageBitmap(bitmap);
-            mDoubleCache.put(url,bitmap);
             return;
         }
         submitLoadRequest(url, imageView);
     }
 
     private void submitLoadRequest(final String url, final ImageView imageView) {
+        Log.i(TAG,"Download,url:"+url);
         imageView.setTag(url);
         mExecutorService.submit(new Runnable() {
             @Override
@@ -62,18 +53,13 @@ public class ImageLoader {
                             imageView.setImageBitmap(bitmap);
                         }
                     });
+                    
                 }
-                mDoubleCache.put(url, bitmap);
+                mCache.put(url, bitmap);//每次都要更新
             }
         });
     }
-    Handler handler = new Handler(){
-        @Override
-        public void handleMessage(Message msg) {
-
-        }
-    };
-
+    
     public Bitmap downloadImage(String url) {
         Bitmap bitmap = null;
         HttpURLConnection conn = null;
@@ -81,7 +67,9 @@ public class ImageLoader {
             URL url1 = new URL(url);
             conn = (HttpURLConnection) url1.openConnection();
             bitmap = BitmapFactory.decodeStream(conn.getInputStream());
-            mDoubleCache.put(url,bitmap);
+            if (bitmap!=null){
+                mCache.put(url, bitmap);
+            }
         } catch (MalformedURLException e) {
             e.printStackTrace();
         } catch (Exception e) {
@@ -92,5 +80,42 @@ public class ImageLoader {
             }
         }
         return bitmap;
+    }
+
+
+    public static class Builder{
+        Context context;
+        private ImageCache mCache ;
+        private int mLoadingImageId ;
+        private int mErrorImageId;
+
+        public Builder(Context context){
+            this.context = context;
+        }
+        public Builder setImageCache(ImageCache cache){
+            mCache = cache;
+            return this;
+        }
+
+        public Builder setErrorImageId(int resId){
+            mErrorImageId = resId;
+            return this;
+        }
+        public Builder setLoadingImageId(int resId){
+            mLoadingImageId = resId;
+            return this;
+        }
+
+        private void applyConfig(ImageLoader loader) {
+            loader.mCache = mCache;
+            loader.mErrorImageId = mErrorImageId;
+            loader.mLoadingImageId = mLoadingImageId;
+        }
+
+        public ImageLoader create(){
+            ImageLoader loader = new ImageLoader(context);
+            applyConfig(loader);
+            return loader;
+        }
     }
 }
